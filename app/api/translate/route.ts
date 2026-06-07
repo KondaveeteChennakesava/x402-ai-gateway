@@ -14,17 +14,23 @@ const FACILITATOR_URL = "https://x402-facilitator.molandak.org";
 if (!process.env.PAY_TO_ADDRESS) {
   throw new Error("PAY_TO_ADDRESS environment variable is required");
 }
+
 const PAY_TO = process.env.PAY_TO_ADDRESS;
 
 // --- x402 Setup ---
-const facilitatorClient = new HTTPFacilitatorClient({ url: FACILITATOR_URL });
+const facilitatorClient = new HTTPFacilitatorClient({
+  url: FACILITATOR_URL,
+});
+
 const server = new x402ResourceServer(facilitatorClient);
 
 // Register custom money parser so x402 knows Monad's USDC address
 const monadScheme = new ExactEvmScheme();
+
 monadScheme.registerMoneyParser(async (amount: number, network: string) => {
   if (network === MONAD_NETWORK) {
     const tokenAmount = Math.floor(amount * 1_000_000).toString();
+
     return {
       amount: tokenAmount,
       asset: MONAD_USDC,
@@ -34,6 +40,7 @@ monadScheme.registerMoneyParser(async (amount: number, network: string) => {
       },
     };
   }
+
   return null;
 });
 
@@ -50,23 +57,36 @@ const routeConfig: RouteConfig = {
   description: "Pay 0.001 USDC to translate text using Sarvam AI",
 };
 
+// --- Response Types ---
+type TranslationResponse =
+  | {
+      error: string;
+      details?: unknown;
+    }
+  | {
+      success: true;
+      translated_text: string;
+      source_language: string;
+      target_language: string;
+    };
+
 // --- Translation Handler ---
-async function handler(req: NextRequest) {
+async function handler(
+  req: NextRequest,
+): Promise<NextResponse<TranslationResponse>> {
   try {
     const body = await req.json();
+
     const { text, source_language, target_language } = body;
 
     if (!text || text.trim() === "") {
-      return NextResponse.json(
-        { error: "No text provided" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "No text provided" }, { status: 400 });
     }
 
     if (!target_language) {
       return NextResponse.json(
         { error: "Target language is required" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -88,9 +108,15 @@ async function handler(req: NextRequest) {
 
     if (!sarvamResponse.ok) {
       const errorData = await sarvamResponse.json();
+
       return NextResponse.json(
-        { error: "Translation failed", details: errorData },
-        { status: sarvamResponse.status }
+        {
+          error: "Translation failed",
+          details: errorData,
+        },
+        {
+          status: sarvamResponse.status,
+        },
       );
     }
 
@@ -102,12 +128,16 @@ async function handler(req: NextRequest) {
       source_language: source_language ?? "auto",
       target_language,
     });
-
   } catch (error) {
     console.error("Route error:", error);
+
     return NextResponse.json(
-      { error: "Internal server error" },
-      { status: 500 }
+      {
+        error: "Internal server error",
+      },
+      {
+        status: 500,
+      },
     );
   }
 }
